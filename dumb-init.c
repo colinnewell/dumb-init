@@ -39,7 +39,7 @@
 // Indices are one-indexed (signal 1 is at index 1). Index zero is unused.
 int signal_rewrite[MAXSIG + 1] = {[0 ... MAXSIG] = -1};
 
-pid_t child_pid = -1;
+pid_t child_pids[] = { -1, 0, 0 };
 char debug = 0;
 char use_setsid = 1;
 
@@ -58,9 +58,12 @@ int translate_signal(int signum) {
 }
 
 void forward_signal(int signum) {
+    int child_pid, i;
     signum = translate_signal(signum);
     if (signum != 0) {
-        kill(use_setsid ? -child_pid : child_pid, signum);
+        for(i = 0; (child_pid = child_pids[i]); i++) {
+            kill(use_setsid ? -child_pid : child_pid, signum);
+        }
         DEBUG("Forwarded signal %d to children.\n", signum);
     } else {
         DEBUG("Not forwarding signal %d to children (ignored).\n", signum);
@@ -102,10 +105,13 @@ void handle_signal(int signum) {
                 DEBUG("A child with PID %d was terminated by signal %d.\n", killed_pid, exit_status - 128);
             }
 
-            if (killed_pid == child_pid) {
-                forward_signal(SIGTERM);  // send SIGTERM to any remaining children
-                DEBUG("Child exited with status %d. Goodbye.\n", exit_status);
-                exit(exit_status);
+            int child_pid, i;
+            for(i = 0; (child_pid = child_pids[i]); i++) {
+                if (killed_pid == child_pid) {
+                    forward_signal(SIGTERM);  // send SIGTERM to any remaining children
+                    DEBUG("Child exited with status %d. Goodbye.\n", exit_status);
+                    exit(exit_status);
+                }
             }
         }
     } else {
@@ -241,8 +247,48 @@ char **parse_command(int argc, char *argv[]) {
 // https://lists.freebsd.org/pipermail/freebsd-ports/2009-October/057340.html
 void dummy(int signum) {}
 
+char **find_second_command(char **argv) {
+    int i;
+    for(i = 0; argv[i]; i++) {
+        if(strcmp(argv[i], ";") == 0) {
+            argv[i] = (char*) NULL;
+            return &argv[i+1];
+        }
+    }
+    return NULL;
+}
+
+int run_child(char **cmd, sigset_t *all_signals) {
+    sigprocmask(SIG_UNBLOCK, all_signals, NULL);
+    if (use_setsid) {
+        if (setsid() == -1) {
+            PRINTERR(
+                "Unable to setsid (errno=%d %s). Exiting.\n",
+                errno,
+                strerror(errno)
+            );
+            exit(1);
+        }
+
+        if (ioctl(STDIN_FILENO, TIOCSCTTY, 0) == -1) {
+            DEBUG(
+                "Unable to attach to controlling tty (errno=%d %s).\n",
+                errno,
+                strerror(errno)
+            );
+        }
+        DEBUG("setsid complete.\n");
+    }
+    execvp(cmd[0], &cmd[0]);
+
+    // if this point is reached, exec failed, so we should exit nonzero
+    PRINTERR("%s: %s\n", cmd[0], strerror(errno));
+    return 2;
+}
+
 int main(int argc, char *argv[]) {
     char **cmd = parse_command(argc, argv);
+    char **second_cmd = find_second_command(cmd);
     sigset_t all_signals;
     sigfillset(&all_signals);
     sigprocmask(SIG_BLOCK, &all_signals, NULL);
@@ -260,40 +306,34 @@ int main(int argc, char *argv[]) {
         );
     }
 
+    pid_t child_pid = -1;
     child_pid = fork();
     if (child_pid < 0) {
         PRINTERR("Unable to fork. Exiting.\n");
         return 1;
     } else if (child_pid == 0) {
         /* child */
-        sigprocmask(SIG_UNBLOCK, &all_signals, NULL);
-        if (use_setsid) {
-            if (setsid() == -1) {
-                PRINTERR(
-                    "Unable to setsid (errno=%d %s). Exiting.\n",
-                    errno,
-                    strerror(errno)
-                );
-                exit(1);
-            }
-
-            if (ioctl(STDIN_FILENO, TIOCSCTTY, 0) == -1) {
-                DEBUG(
-                    "Unable to attach to controlling tty (errno=%d %s).\n",
-                    errno,
-                    strerror(errno)
-                );
-            }
-            DEBUG("setsid complete.\n");
-        }
-        execvp(cmd[0], &cmd[0]);
-
-        // if this point is reached, exec failed, so we should exit nonzero
-        PRINTERR("%s: %s\n", cmd[0], strerror(errno));
-        return 2;
+        return run_child(cmd, &all_signals);
     } else {
         /* parent */
+        child_pids[0] = child_pid;
         DEBUG("Child spawned with PID %d.\n", child_pid);
+        if(second_cmd && second_cmd[0]) {
+            // fork the next command.
+            child_pid = fork();
+            if (child_pid < 0) {
+                // FIXME: should probably kill existing child before doing this.
+                PRINTERR("Unable to fork. Exiting.\n");
+                return 1;
+            } else if (child_pid == 0) {
+                /* child */
+                return run_child(second_cmd, &all_signals);
+            } else {
+                /* parent */
+                child_pids[1] = child_pid;
+                DEBUG("Child spawned with PID %d.\n", child_pid);
+            }
+        }
         for (;;) {
             int signum;
             sigwait(&all_signals, &signum);
