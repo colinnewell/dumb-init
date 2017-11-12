@@ -213,7 +213,7 @@ char **parse_command(int argc, char *argv[]) {
     if (optind >= argc) {
         fprintf(
             stderr,
-            "Usage: %s [option] command [[arg] ...] [\\; command2 [args]]\n"
+            "Usage: %s [option] command [args] [\\; command2 [args]]\n"
             "Try %s --help for full usage.\n",
             argv[0], argv[0]
         );

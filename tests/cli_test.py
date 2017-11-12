@@ -18,7 +18,7 @@ def test_no_arguments_prints_usage():
     _, stderr = proc.communicate()
     assert proc.returncode != 0
     assert stderr == (
-        b'Usage: dumb-init [option] program [args]\n'
+        b'Usage: dumb-init [option] command [args] [\\; command2 [args]]\n'
         b'Try dumb-init --help for full usage.\n'
     )
 
@@ -45,7 +45,7 @@ def test_help_message(flag, current_version):
     assert proc.returncode == 0
     assert stderr == (
         b'dumb-init v' + current_version.encode('ascii') + b'\n'
-        b'Usage: dumb-init [option] command [[arg] ...]\n'
+        b'Usage: dumb-init [option] command [[arg] ...] [\\; command2 [args]]\n'
         b'\n'
         b'dumb-init is a simple process supervisor that forwards signals to children.\n'
         b'It is designed to run as PID1 in minimal container environments.\n'
