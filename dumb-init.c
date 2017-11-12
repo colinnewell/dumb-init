@@ -126,7 +126,7 @@ void handle_signal(int signum) {
 void print_help(char *argv[]) {
     fprintf(stderr,
         "dumb-init v%s"
-        "Usage: %s [option] command [[arg] ...]\n"
+        "Usage: %s [option] command [[arg] ...] [\\; command2 [args]]\n"
         "\n"
         "dumb-init is a simple process supervisor that forwards signals to children.\n"
         "It is designed to run as PID1 in minimal container environments.\n"
@@ -213,7 +213,7 @@ char **parse_command(int argc, char *argv[]) {
     if (optind >= argc) {
         fprintf(
             stderr,
-            "Usage: %s [option] program [args]\n"
+            "Usage: %s [option] command [[arg] ...] [\\; command2 [args]]\n"
             "Try %s --help for full usage.\n",
             argv[0], argv[0]
         );
