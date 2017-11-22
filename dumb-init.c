@@ -61,7 +61,7 @@ void forward_signal(int signum) {
     signum = translate_signal(signum);
     if (signum != 0) {
         pid_t child_pid;
-        for(int i = 0; (child_pid = child_pids[i]); i++) {
+        for(int i = 0; (child_pid = child_pids[i]); ++i) {
             kill(use_setsid ? -child_pid : child_pid, signum);
         }
         DEBUG("Forwarded signal %d to children.\n", signum);
