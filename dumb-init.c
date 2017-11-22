@@ -248,7 +248,7 @@ char **parse_command(int argc, char *argv[]) {
 void dummy(int signum) {}
 
 char **find_second_command(char **argv) {
-    for(int i = 0; argv[i]; i++) {
+    for(int i = 0; argv[i]; ++i) {
         if(strcmp(argv[i], ";") == 0) {
             argv[i] = '\0';
             return &argv[i+1];
