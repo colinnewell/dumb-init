@@ -58,10 +58,10 @@ int translate_signal(int signum) {
 }
 
 void forward_signal(int signum) {
-    int child_pid, i;
     signum = translate_signal(signum);
     if (signum != 0) {
-        for(i = 0; (child_pid = child_pids[i]); i++) {
+        pid_t child_pid;
+        for(int i = 0; (child_pid = child_pids[i]); i++) {
             kill(use_setsid ? -child_pid : child_pid, signum);
         }
         DEBUG("Forwarded signal %d to children.\n", signum);
@@ -105,8 +105,8 @@ void handle_signal(int signum) {
                 DEBUG("A child with PID %d was terminated by signal %d.\n", killed_pid, exit_status - 128);
             }
 
-            int child_pid, i;
-            for(i = 0; (child_pid = child_pids[i]); i++) {
+            pid_t child_pid;
+            for(int i = 0; (child_pid = child_pids[i]); ++i) {
                 if (killed_pid == child_pid) {
                     forward_signal(SIGTERM);  // send SIGTERM to any remaining children
                     DEBUG("Child exited with status %d. Goodbye.\n", exit_status);
@@ -248,10 +248,9 @@ char **parse_command(int argc, char *argv[]) {
 void dummy(int signum) {}
 
 char **find_second_command(char **argv) {
-    int i;
-    for(i = 0; argv[i]; i++) {
+    for(int i = 0; argv[i]; i++) {
         if(strcmp(argv[i], ";") == 0) {
-            argv[i] = (char*) NULL;
+            argv[i] = '\0';
             return &argv[i+1];
         }
     }
@@ -259,6 +258,8 @@ char **find_second_command(char **argv) {
 }
 
 int run_child(char **cmd, sigset_t *all_signals) {
+    if(!(cmd && all_signals))
+        exit(3); // just guard against programmer error
     sigprocmask(SIG_UNBLOCK, all_signals, NULL);
     if (use_setsid) {
         if (setsid() == -1) {
@@ -283,7 +284,7 @@ int run_child(char **cmd, sigset_t *all_signals) {
 
     // if this point is reached, exec failed, so we should exit nonzero
     PRINTERR("%s: %s\n", cmd[0], strerror(errno));
-    return 2;
+    exit(2);
 }
 
 int main(int argc, char *argv[]) {
@@ -306,8 +307,7 @@ int main(int argc, char *argv[]) {
         );
     }
 
-    pid_t child_pid = -1;
-    child_pid = fork();
+    pid_t child_pid = fork();
     if (child_pid < 0) {
         PRINTERR("Unable to fork. Exiting.\n");
         return 1;
